@@ -2,6 +2,9 @@
   <img width="256" height="256" alt="image" src="https://github.com/user-attachments/assets/1e21d898-811b-42c2-a810-bf921dde0f58" />
 </div>
 
+# 项目说明
+由于原项目方案暂不支持docker镜像部署模式，计划开发一个打包镜像用于群晖nas直接使用。
+
 # MCPVault
 
 A universal AI bridge for Obsidian vaults using the Model Context Protocol (MCP) standard. Connect any MCP-compatible AI assistant to your knowledge base - works with Claude, ChatGPT, and future AI tools. This server provides safe read/write access to your notes while preventing YAML frontmatter corruption.
