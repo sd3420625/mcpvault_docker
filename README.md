@@ -5,6 +5,14 @@
 # 项目说明
 由于原项目方案暂不支持docker镜像部署模式，计划开发一个打包镜像用于群晖nas直接使用。
 
+## 本次改造思路
+
+本 fork 面向“群晖 NAS 统一托管 Obsidian vault，并通过 ChatGPT Business 远程管理笔记”的使用场景。整体方案是把 MCPVault 打包为适合群晖 Container Manager 运行的单容器镜像：容器内仍保留 MCPVault 原有 stdio MCP server，不改动核心笔记读写工具；同时内置 supergateway，将 stdio MCP 转换为 Streamable HTTP，并默认通过 `8000` 端口的 `/mcp` endpoint 对局域网提供服务。
+
+推荐部署链路为：ChatGPT Business 通过 HTTPS 访问 Cloudflare Access 保护的 MCP 地址，Cloudflare Tunnel 将请求转发回局域网 NAS 上的 MCPVault 容器，容器再读写挂载到 `/vault` 的群晖 Obsidian vault。Cloudflare Tunnel 可以继续部署在主路由器上，不要求安装在 NAS 上；这种情况下 tunnel origin 必须配置为 NAS 的局域网地址，例如 `http://NAS_IP:8000`，不能写成路由器本机的 `localhost`。
+
+此方案优先保证群晖部署简单、核心 MCPVault 行为稳定、vault 文件仍留在本地 NAS。生产使用前建议开启群晖快照、Hyper Backup 或 Git 备份，并确认容器运行用户对 vault 共享文件夹具有正确读写权限。
+
 # MCPVault
 
 A universal AI bridge for Obsidian vaults using the Model Context Protocol (MCP) standard. Connect any MCP-compatible AI assistant to your knowledge base - works with Claude, ChatGPT, and future AI tools. This server provides safe read/write access to your notes while preventing YAML frontmatter corruption.

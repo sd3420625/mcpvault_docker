@@ -1,0 +1,20 @@
+services:
+  mcpvault-gateway:
+    build:
+      context: .
+    image: mcpvault-gateway:local
+    container_name: mcpvault-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - /volume1/Notes/ObsidianVault:/vault:rw
+    environment:
+      VAULT_PATH: /vault
+      PORT: "8000"
+      MCP_PATH: /mcp
+      SESSION_TIMEOUT: "60000"
+      LOG_LEVEL: info
+    # Uncomment and set these to the Synology user/group that owns the vault
+    # if the default node user cannot write to the mounted share.
+    # user: "1026:100"
