@@ -98,9 +98,46 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+  gateway:
+    name: Supergateway tests with patched dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: supercorp-ai/supergateway
+          ref: v4.2.1
+          path: gateway-source
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Apply the same security overrides as the image
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const runtime = JSON.parse(fs.readFileSync('docker/runtime-package.json', 'utf8'));
+          const file = 'gateway-source/package.json';
+          const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+          pkg.overrides = { ...pkg.overrides, ...runtime.overrides };
+          for (const section of ['dependencies', 'devDependencies']) {
+            for (const [name, version] of Object.entries(runtime.overrides)) {
+              if (pkg[section]?.[name]) pkg[section][name] = version;
+            }
+          }
+          fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+      - run: npm install
+        working-directory: gateway-source
+      - run: npm test
+        working-directory: gateway-source
+
   publish:
     name: Publish the verified images to Docker Hub
-    needs: [upstream, image]
+    needs: [upstream, gateway, image]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
