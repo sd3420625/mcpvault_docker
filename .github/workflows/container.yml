@@ -63,14 +63,18 @@ jobs:
           test "$(docker image inspect mcpvault-ci:${{ matrix.arch }} --format '{{.Config.User}}')" = node
           docker run --rm --entrypoint node mcpvault-ci:${{ matrix.arch }} -e "const p=require('./package-lock.json').packages; if(p['node_modules/@bitbonsai/mcpvault'].version!=='0.17.1'||p['node_modules/supergateway'].version!=='4.2.1')process.exit(1); console.log('MCPVault 0.17.1; Supergateway 4.2.1')"
       - name: Audit the whole runtime including Supergateway
-        run: docker run --rm --entrypoint npm mcpvault-ci:${{ matrix.arch }} audit --omit=dev --audit-level=high
+        run: docker run --rm --entrypoint npm mcpvault-ci:${{ matrix.arch }} audit --omit=dev --audit-level=moderate
       - name: Test Streamable HTTP, vault operations, authentication and read-only mode
         run: |
           set -eu
-          for mode in false true; do
-            name="mcpvault-ci-${mode}"
+          for config in false:1000 true:1000 false:1024; do
+            mode="${config%:*}"
+            uid="${config#*:}"
+            name="mcpvault-ci-${mode}-${uid}"
             docker run -d --name "$name" \
-              --tmpfs /vault:rw,uid=1000,gid=1000,mode=0700 \
+              --user "${uid}:100" --group-add 101 --group-add 1023 \
+              --tmpfs "/vault:rw,uid=${uid},gid=100,mode=0700" \
+              -e PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
               -e 'VAULT_PATH=/vault/中文 vault' \
               -e SESSION_TIMEOUT=3000 \
               -e MCP_READ_ONLY="$mode" \
@@ -86,7 +90,7 @@ jobs:
       - name: Print container logs on failure
         if: failure()
         run: |
-          for name in mcpvault-ci-false mcpvault-ci-true; do
+          for name in mcpvault-ci-false-1000 mcpvault-ci-true-1000 mcpvault-ci-false-1024; do
             docker logs "$name" 2>/dev/null || true
           done
       - name: Save the verified image without rebuilding it
@@ -134,6 +138,9 @@ jobs:
           }
           fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
           NODE
+      - name: Preserve patched SDK batch-size security limits in the upstream regression
+        run: git apply --check ../docker/supergateway-batch-limit.patch && git apply ../docker/supergateway-batch-limit.patch
+        working-directory: gateway-source
       - run: npm install
         working-directory: gateway-source
       - run: npm run build
@@ -145,39 +152,6 @@ jobs:
           TS_NODE_TRANSPILE_ONLY: 'true'
         run: node --test --test-concurrency=1 --test-timeout=120000 --experimental-loader ts-node/esm --experimental-test-module-mocks --test-shard=${{ matrix.shard }}/4 'tests/**/*.test.ts'
         working-directory: gateway-source
-
-  prepare-locks:
-    name: Prepare patched dependency lockfiles
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: Resolve security fixes within the historical package ranges
-        run: |
-          mkdir -p lock-artifacts
-          if npm audit fix --package-lock-only --ignore-scripts; then status=0; else status=$?; fi
-          cp package.json lock-artifacts/historical-package.json
-          cp package-lock.json lock-artifacts/historical-package-lock.json
-          exit "$status"
-      - name: Resolve the pinned container runtime lock
-        if: always()
-        run: |
-          mkdir -p runtime-lock lock-artifacts
-          cp docker/runtime-package.json runtime-lock/package.json
-          npm install --prefix runtime-lock --package-lock-only --ignore-scripts
-          cp runtime-lock/package-lock.json lock-artifacts/runtime-package-lock.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: patched-lockfiles
-          path: lock-artifacts/*.json
-          retention-days: 1
 
   publish:
     name: Publish the verified images to Docker Hub
