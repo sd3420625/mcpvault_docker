@@ -35,7 +35,7 @@ fi
 echo "Starting MCPVault gateway on port $PORT at $MCP_PATH"
 echo "Vault path: $VAULT_PATH"
 
-exec supergateway \
+exec /app/node_modules/.bin/supergateway \
   --stdio "node /app/docker/mcpvault-stdio.mjs" \
   --outputTransport streamableHttp \
   --stateful \
