@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdir, writeFile, readFile, link, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, readFile, link, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -18,8 +19,11 @@ await writeFile(join(vault, '中文 笔记.md'), '---\ndate: 2026-10-28\ntime: "
 await writeFile(join(vault, '.hidden.md'), 'private');
 await mkdir(join(vault, 'nested/.obsidian'), { recursive: true });
 await writeFile(join(vault, 'nested/.obsidian/config.md'), 'private');
-await writeFile('/tmp/mcpvault-outside.md', 'outside must stay private');
-await symlink('/tmp/mcpvault-outside.md', join(vault, 'outside.md'));
+const outsideDir = await mkdtemp(join(tmpdir(), 'mcpvault-http-'));
+const outsideFile = join(outsideDir, 'outside.md');
+const missingFile = join(outsideDir, 'missing.md');
+await writeFile(outsideFile, 'outside must stay private', { flag: 'wx', mode: 0o600 });
+await symlink(outsideFile, join(vault, 'outside.md'));
 await link(join(vault, '中文 笔记.md'), join(vault, 'hardlinked.md'));
 
 async function connect() {
@@ -127,10 +131,10 @@ try {
       assert.equal(await readFile(join(vault, '.trash/测试/已移动.md'), 'utf8'), before);
     });
     await check('dangling symlinks cannot write outside the vault', async () => {
-      await symlink('/tmp/mcpvault-missing-target.md', join(vault, 'dangling.md'));
+      await symlink(missingFile, join(vault, 'dangling.md'));
       await denied(first, 'write_note', { path: 'dangling.md', content: 'must not escape' });
-      await assert.rejects(readFile('/tmp/mcpvault-missing-target.md'));
-      assert.equal(await readFile('/tmp/mcpvault-outside.md', 'utf8'), 'outside must stay private');
+      await assert.rejects(readFile(missingFile));
+      assert.equal(await readFile(outsideFile, 'utf8'), 'outside must stay private');
     });
   }
   await check('independent clients receive their own responses', async () => {
@@ -170,4 +174,5 @@ try {
   console.log(`PASS ${count} HTTP checks; mode=${readOnly ? 'read-only' : 'read-write'}; MCPVault=0.17.1`);
 } finally {
   await Promise.allSettled(clients.map(client => client.close()));
+  await rm(outsideDir, { recursive: true, force: true });
 }
