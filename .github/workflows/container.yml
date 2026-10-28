@@ -1,0 +1,187 @@
+name: Container verification and Docker Hub release
+
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile, 'docker/**', '.github/workflows/container.yml']
+  pull_request:
+    paths: [Dockerfile, 'docker/**', '.github/workflows/container.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  IMAGE: sd3420625/mcpvault-gateway
+  RELEASE: 0.17.1-sg4.2.1
+
+jobs:
+  upstream:
+    name: Official MCPVault tests on Node 24
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: bitbonsai/mcpvault
+          ref: adda8609be73fd5b3adaa14430b43c40c5cbfb18
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  image:
+    name: Test image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build the exact image to be tested and published
+        env:
+          REVISION: ${{ github.sha }}
+        run: docker build --build-arg VCS_REF="$REVISION" -t mcpvault-ci:${{ matrix.arch }} .
+      - name: Check installed versions and non-root user
+        run: |
+          test "$(docker image inspect mcpvault-ci:${{ matrix.arch }} --format '{{.Config.User}}')" = node
+          docker run --rm --entrypoint node mcpvault-ci:${{ matrix.arch }} -e "const p=require('./package-lock.json').packages; if(p['node_modules/@bitbonsai/mcpvault'].version!=='0.17.1'||p['node_modules/supergateway'].version!=='4.2.1')process.exit(1); console.log('MCPVault 0.17.1; Supergateway 4.2.1')"
+      - name: Audit the whole runtime including Supergateway
+        run: docker run --rm --entrypoint npm mcpvault-ci:${{ matrix.arch }} audit --omit=dev --audit-level=moderate
+      - name: Test Streamable HTTP, vault operations, authentication and read-only mode
+        run: |
+          set -eu
+          for config in false:1000 true:1000 false:1024; do
+            mode="${config%:*}"
+            uid="${config#*:}"
+            name="mcpvault-ci-${mode}-${uid}"
+            docker run -d --name "$name" \
+              --user "${uid}:100" --group-add 101 --group-add 1023 \
+              --tmpfs "/vault:rw,uid=${uid},gid=100,mode=0700" \
+              -e PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+              -e 'VAULT_PATH=/vault/中文 vault' \
+              -e SESSION_TIMEOUT=3000 \
+              -e MCP_READ_ONLY="$mode" \
+              -e SUPERGATEWAY_API_KEY=mcpvault-disposable-ci-key \
+              --entrypoint sh mcpvault-ci:${{ matrix.arch }} \
+              -c 'mkdir -p "$VAULT_PATH"; exec /usr/local/bin/mcpvault-entrypoint'
+            docker cp docker/smoke-http.mjs "$name:/app/smoke-http.mjs"
+            docker exec "$name" node -e "const end=Date.now()+60000; (async()=>{while(Date.now()<end){try{if((await fetch('http://127.0.0.1:8000/healthz')).ok)return;}catch{} await new Promise(r=>setTimeout(r,500));} process.exit(1)})()"
+            docker exec -e MCP_TEST_VAULT_IS_DISPOSABLE=yes "$name" node /app/smoke-http.mjs
+            docker stop --time 15 "$name"
+            docker rm "$name"
+          done
+      - name: Print container logs on failure
+        if: failure()
+        run: |
+          for name in mcpvault-ci-false-1000 mcpvault-ci-true-1000 mcpvault-ci-false-1024; do
+            docker logs "$name" 2>/dev/null || true
+          done
+      - name: Save the verified image without rebuilding it
+        run: docker save mcpvault-ci:${{ matrix.arch }} | gzip > image-${{ matrix.arch }}.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-image-${{ matrix.arch }}
+          path: image-${{ matrix.arch }}.tgz
+          retention-days: 1
+          compression-level: 0
+
+  gateway:
+    name: Supergateway patched dependencies (${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: supercorp-ai/supergateway
+          ref: v4.2.1
+          path: gateway-source
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Apply the same security overrides as the image
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const runtime = JSON.parse(fs.readFileSync('docker/runtime-package.json', 'utf8'));
+          const file = 'gateway-source/package.json';
+          const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+          pkg.overrides = { ...pkg.overrides, ...runtime.overrides };
+          for (const section of ['dependencies', 'devDependencies']) {
+            for (const [name, version] of Object.entries(runtime.overrides)) {
+              if (pkg[section]?.[name]) pkg[section][name] = version;
+            }
+          }
+          fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+      - name: Preserve patched SDK batch-size security limits in the upstream regression
+        run: git apply --check ../docker/supergateway-batch-limit.patch && git apply ../docker/supergateway-batch-limit.patch
+        working-directory: gateway-source
+      - run: npm install
+        working-directory: gateway-source
+      - run: npm run build
+        working-directory: gateway-source
+      - name: Run every official gateway test, split across four jobs
+        # Matches upstream tests.yaml: the ts-node typechecking loader aborts on Node 24.
+        # The production source is typechecked by the preceding build.
+        env:
+          TS_NODE_TRANSPILE_ONLY: 'true'
+        run: node --test --test-concurrency=1 --test-timeout=120000 --experimental-loader ts-node/esm --experimental-test-module-mocks --test-shard=${{ matrix.shard }}/4 'tests/**/*.test.ts'
+        working-directory: gateway-source
+
+  publish:
+    name: Publish the verified images to Docker Hub
+    needs: [upstream, gateway, image]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: verified-image-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME || 'sd3420625' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN || secrets.SD3420625 }}
+      - name: Push the exact images that passed both test modes
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          set -eu
+          short="$(printf '%s' "$REVISION" | cut -c1-12)"
+          for arch in amd64 arm64; do
+            gzip -dc "image-${arch}.tgz" | docker load
+            docker tag "mcpvault-ci:${arch}" "$IMAGE:sha-${short}-${arch}"
+            docker push "$IMAGE:sha-${short}-${arch}"
+          done
+          docker buildx imagetools create \
+            -t "$IMAGE:$RELEASE" -t "$IMAGE:sha-${short}" \
+            "$IMAGE:sha-${short}-amd64" "$IMAGE:sha-${short}-arm64"
+          docker buildx imagetools inspect "$IMAGE:$RELEASE"
+          printf 'Published `%s:%s` from commit `%s`; existing `0.11.2` tag was preserved.\n' "$IMAGE" "$RELEASE" "$REVISION" >> "$GITHUB_STEP_SUMMARY"

@@ -1,8 +1,9 @@
 services:
   mcpvault-gateway:
-    build:
-      context: .
-    image: mcpvault-gateway:local
+    image: sd3420625/mcpvault-gateway:0.17.1-sg4.2.1
+    # For local builds instead of pulling the verified Docker Hub image:
+    # build:
+    #   context: .
     container_name: mcpvault-gateway
     restart: unless-stopped
     ports:
@@ -15,6 +16,9 @@ services:
       MCP_PATH: /mcp
       SESSION_TIMEOUT: "60000"
       LOG_LEVEL: info
+      MCP_READ_ONLY: "false"
+      # Optional inbound API key; set it through your deployment's secret mechanism.
+      # SUPERGATEWAY_API_KEY: "..."
     # Uncomment and set these to the Synology user/group that owns the vault
     # if the default node user cannot write to the mounted share.
     # user: "1026:100"

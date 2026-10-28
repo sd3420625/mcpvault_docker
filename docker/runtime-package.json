@@ -1,0 +1,16 @@
+{
+  "name": "mcpvault-gateway-runtime",
+  "version": "0.17.1-sg4.2.1",
+  "private": true,
+  "dependencies": {
+    "@bitbonsai/mcpvault": "0.17.1",
+    "supergateway": "4.2.1"
+  },
+  "overrides": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/node": "2.1.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "@modelcontextprotocol/server": "2.3.1",
+    "zod": "4.6.6"
+  }
+}
