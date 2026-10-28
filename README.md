@@ -2,6 +2,22 @@
   <img width="256" height="256" alt="image" src="https://github.com/user-attachments/assets/1e21d898-811b-42c2-a810-bf921dde0f58" />
 </div>
 
+# Docker 镜像版本与验证
+
+容器固定安装官方 npm 发布包 **MCPVault 0.17.1 + Supergateway 4.2.1**，运行于 Node 24，保留 Streamable HTTP `/mcp`、`/healthz`、`/vault` 和原有端口及环境变量。
+
+本仓库的历史 `src/`、`dist/` 和根目录 npm 文件保留为原 fork 的源码快照；它们不再参与容器构建，也不代表镜像中实际运行的 MCPVault 版本。`Dockerfile` 中的固定版本与镜像内 `/app/package-lock.json` 记录实际运行依赖。
+
+镜像地址为 `sd3420625/mcpvault-gateway:0.17.1-sg4.2.1`。发布流程先运行固定上游提交 `adda8609be73fd5b3adaa14430b43c40c5cbfb18` 的测试及构建，再分别验证 amd64、arm64 容器；两个平台通过后才在主分支上传已测试的同一份镜像，不在发布阶段重新构建。旧的 `0.11.2` 标签保持不变。
+
+容器验证覆盖：MCP 协商、工具发现、中文及空格路径、硬链接笔记读取、搜索、创建后立即读取、追加/前置、字面替换、Frontmatter 日期及引号、移动和本地回收站、隐藏目录和符号链接边界、API Key、并发客户端、会话过期和重连，以及 `MCP_READ_ONLY=true` 时的写入拒绝。所有写入测试均使用一次性的测试 Vault。
+
+`MCP_READ_ONLY` 默认 `false`；设置为 `true` 时同时将实际 Vault 挂载改为 `:ro`。`SESSION_TIMEOUT` 保持原默认值 `60000` 毫秒。`/healthz` 现在还会初始化并检查 MCPVault，Docker 健康检查超时相应增至 15 秒。
+
+公网入口仍需有效鉴权，NAS 端口也应只允许可信来源。可通过 `SUPERGATEWAY_API_KEY` 或 `SUPERGATEWAY_API_KEY_FILE` 增加入站校验；它们与 Cloudflare Access 的配置分别管理。
+
+GitHub Actions 发布使用 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`；也兼容当前仓库已有的令牌名称 `SD3420625`，用户名默认 `sd3420625`。令牌只保存在仓库 Secrets，不应写入项目文件。
+
 # 项目说明
 由于原项目方案暂不支持docker镜像部署模式，计划开发一个打包镜像用于群晖nas直接使用。
 
