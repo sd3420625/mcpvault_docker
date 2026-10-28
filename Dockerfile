@@ -22,10 +22,11 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
+COPY docker/runtime-package.json ./package.json
+
 # Use the published server rather than the historical source snapshot in this fork.
 # The installed lockfile is retained in the image for auditing its exact dependency tree.
-RUN npm init -y \
-    && npm install --omit=dev --save-exact \
+RUN npm install --omit=dev --save-exact \
        "@bitbonsai/mcpvault@${MCPVAULT_VERSION}" \
        "supergateway@${SUPERGATEWAY_VERSION}" \
     && npm cache clean --force

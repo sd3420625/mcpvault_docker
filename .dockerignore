@@ -3,3 +3,4 @@
 !docker/
 !docker/entrypoint.sh
 !docker/mcpvault-stdio.mjs
+!docker/runtime-package.json
