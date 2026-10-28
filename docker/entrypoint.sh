@@ -36,12 +36,13 @@ echo "Starting MCPVault gateway on port $PORT at $MCP_PATH"
 echo "Vault path: $VAULT_PATH"
 
 exec supergateway \
-  --stdio "node /app/dist/server.js \"$VAULT_PATH\"" \
+  --stdio "node /app/docker/mcpvault-stdio.mjs" \
   --outputTransport streamableHttp \
   --stateful \
   --sessionTimeout "$SESSION_TIMEOUT" \
   --port "$PORT" \
   --streamableHttpPath "$MCP_PATH" \
   --healthEndpoint /healthz \
+  --healthCheck server \
   --logLevel "$LOG_LEVEL" \
   "$@"
