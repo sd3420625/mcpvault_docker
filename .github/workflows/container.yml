@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: container-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   IMAGE: sd3420625/mcpvault-gateway
@@ -131,6 +131,9 @@ jobs:
           fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
           NODE
       - run: npm install
+        working-directory: gateway-source
+      - name: Type-check the official gateway source and tests
+        run: npx tsc --noEmit --pretty false
         working-directory: gateway-source
       - run: npm test
         working-directory: gateway-source
