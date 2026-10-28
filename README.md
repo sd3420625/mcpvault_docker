@@ -6,7 +6,7 @@
 
 容器固定安装官方 npm 发布包 **MCPVault 0.17.1 + Supergateway 4.2.1**，运行于 Node 24，保留 Streamable HTTP `/mcp`、`/healthz`、`/vault` 和原有端口及环境变量。
 
-本仓库的历史 `src/`、`dist/` 和根目录 npm 文件保留为原 fork 的源码快照；它们不再参与容器构建，也不代表镜像中实际运行的 MCPVault 版本。`Dockerfile` 中的固定版本与镜像内 `/app/package-lock.json` 记录实际运行依赖。
+本仓库的 `src/`、`dist/` 保留为原 fork 的历史源码，根目录 npm 文件用于其开发验证；根目录锁文件已在原有版本范围内更新安全补丁。它们不参与容器构建，也不代表镜像中实际运行的 MCPVault 版本。容器用 `docker/runtime-package.json` 与 `docker/runtime-package-lock.json` 固定实际依赖，通过 `npm ci` 安装，镜像内 `/app/package-lock.json` 保留同一份记录。
 
 镜像地址为 `sd3420625/mcpvault-gateway:0.17.1-sg4.2.1`。发布流程先运行固定上游提交 `adda8609be73fd5b3adaa14430b43c40c5cbfb18` 的测试及构建，再分别验证 amd64、arm64 容器；两个平台通过后才在主分支上传已测试的同一份镜像，不在发布阶段重新构建。旧的 `0.11.2` 标签保持不变。
 

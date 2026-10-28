@@ -23,12 +23,11 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY docker/runtime-package.json ./package.json
+COPY docker/runtime-package-lock.json ./package-lock.json
 
-# Use the published server rather than the historical source snapshot in this fork.
-# The installed lockfile is retained in the image for auditing its exact dependency tree.
-RUN npm install --omit=dev --save-exact \
-       "@bitbonsai/mcpvault@${MCPVAULT_VERSION}" \
-       "supergateway@${SUPERGATEWAY_VERSION}" \
+# Install the exact audited tree; the fork's historical source is not part of the image.
+RUN node -e 'const p=require("./package-lock.json").packages; for(const [name,want] of Object.entries({"@bitbonsai/mcpvault":process.env.MCPVAULT_VERSION,supergateway:process.env.SUPERGATEWAY_VERSION})){if(p["node_modules/"+name]?.version!==want)throw new Error("Build version must match the runtime lockfile: "+name)}' \
+    && npm ci --omit=dev \
     && npm cache clean --force
 
 COPY docker/entrypoint.sh /usr/local/bin/mcpvault-entrypoint
