@@ -2,7 +2,7 @@ name: Container verification and Docker Hub release
 
 on:
   push:
-    branches: [main, 'upgrade/**']
+    branches: [main]
     paths: [Dockerfile, 'docker/**', '.github/workflows/container.yml']
   pull_request:
     paths: [Dockerfile, 'docker/**', '.github/workflows/container.yml']
@@ -99,9 +99,13 @@ jobs:
           compression-level: 0
 
   gateway:
-    name: Supergateway tests with patched dependencies
+    name: Supergateway patched dependencies (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -132,11 +136,48 @@ jobs:
           NODE
       - run: npm install
         working-directory: gateway-source
-      - name: Type-check the official gateway source and tests
-        run: npx tsc --noEmit --pretty false
+      - run: npm run build
         working-directory: gateway-source
-      - run: npm test
+      - name: Run every official gateway test, split across four jobs
+        # Matches upstream tests.yaml: the ts-node typechecking loader aborts on Node 24.
+        # The production source is typechecked by the preceding build.
+        env:
+          TS_NODE_TRANSPILE_ONLY: 'true'
+        run: node --test --test-concurrency=1 --test-timeout=120000 --experimental-loader ts-node/esm --experimental-test-module-mocks --test-shard=${{ matrix.shard }}/4 'tests/**/*.test.ts'
         working-directory: gateway-source
+
+  prepare-locks:
+    name: Prepare patched dependency lockfiles
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Resolve security fixes within the historical package ranges
+        run: |
+          mkdir -p lock-artifacts
+          if npm audit fix --package-lock-only --ignore-scripts; then status=0; else status=$?; fi
+          cp package.json lock-artifacts/historical-package.json
+          cp package-lock.json lock-artifacts/historical-package-lock.json
+          exit "$status"
+      - name: Resolve the pinned container runtime lock
+        if: always()
+        run: |
+          mkdir -p runtime-lock lock-artifacts
+          cp docker/runtime-package.json runtime-lock/package.json
+          npm install --prefix runtime-lock --package-lock-only --ignore-scripts
+          cp runtime-lock/package-lock.json lock-artifacts/runtime-package-lock.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: patched-lockfiles
+          path: lock-artifacts/*.json
+          retention-days: 1
 
   publish:
     name: Publish the verified images to Docker Hub
