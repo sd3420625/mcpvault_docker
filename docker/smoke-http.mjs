@@ -144,12 +144,19 @@ try {
     const replacement = await connect();
     assert.match(JSON.stringify(await tool(replacement, 'read_note', { path: '中文 笔记.md' })), /兼容性验证/);
   });
-  await check('idle sessions expire and a new client recovers', async () => {
+  await check('live streams survive and disconnected sessions expire', async () => {
     const idle = await connect();
     const session = transports.get(idle).sessionId;
     assert.ok(session, 'Legacy stateful sessions must have an ID');
     const timeout = Number(process.env.SESSION_TIMEOUT);
     assert.ok(timeout > 0 && timeout <= 10000, 'Use a short timeout only in this disposable test container');
+    // An open SSE stream is an active request, not an idle session. The
+    // gateway probes the connected client and keeps a responsive client alive.
+    await delay(timeout + 1500);
+    await idle.ping();
+    // Close only the client transport, without DELETE/terminateSession, to
+    // simulate a disconnected client and exercise timeout-based reclamation.
+    await idle.close();
     await delay(timeout + 1500);
     const response = await fetch(endpoint, {
       method: 'POST',
