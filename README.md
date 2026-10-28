@@ -18,7 +18,7 @@
 
 GitHub Actions 发布使用 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`；也兼容当前仓库已有的令牌名称 `SD3420625`，用户名默认 `sd3420625`。令牌只保存在仓库 Secrets，不应写入项目文件。
 
-Supergateway 4.2.1 原发布包锁定的部分 MCP SDK 和 Zod 版本存在已公布的高危问题。`docker/runtime-package.json` 将 SDK 1.x 固定到 1.31.1、SDK client/server 2.x 固定到 2.3.1、Node transport 固定到 2.1.0、Zod 固定到 4.6.6。发布前既审计整个运行依赖树，也用同一组修补依赖运行 Supergateway 官方测试；不会通过降级网关或关闭审计来绕过告警。
+Supergateway 4.2.1 原发布包锁定的部分 MCP SDK 和 Zod 版本存在已公布的高危问题。`docker/runtime-package.json` 将 SDK 1.x 固定到 1.32.0、SDK client/server 2.x 固定到 2.3.1、Node transport 固定到 2.1.0、Zod 固定到 4.6.6。发布前既审计整个运行依赖树，也用同一组修补依赖运行 Supergateway 官方测试；不会通过降级网关或关闭审计来绕过告警。
 
 # 项目说明
 由于原项目方案暂不支持docker镜像部署模式，计划开发一个打包镜像用于群晖nas直接使用。
