@@ -37,7 +37,7 @@ for mode, signal in [("gateway", "SIGTERM"), ("server", "SIGINT")]:
         docker("exec", "-d", "-e", "MCP_TEST_VAULT_IS_DISPOSABLE=yes", name,
                "node", "/app/process-regression.mjs", "--hold")
         deadline = time.monotonic() + 30
-        while subprocess.run(["docker", "exec", name, "test", "-f", "/tmp/lifecycle-ready"],
+        while subprocess.run(["docker", "exec", name, "test", "-f", "/vault/.lifecycle-ready"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5).returncode:
             assert time.monotonic() < deadline, "Active session did not become ready"
             time.sleep(0.2)
@@ -47,7 +47,9 @@ for mode, signal in [("gateway", "SIGTERM"), ("server", "SIGINT")]:
         assert code == "0", f"Unclean {signal}: {code}"
         assert json.loads(docker("inspect", name))[0]["State"]["Pid"] == 0
         print(f"PASS {mode}: {signal} with active session exited 0 in {time.monotonic() - started:.2f}s", flush=True)
-    except BaseException:
+    except BaseException as error:
+        if isinstance(error, subprocess.CalledProcessError) and error.output:
+            print(error.output, flush=True)
         subprocess.run(["docker", "logs", name], check=False)
         raise
     finally:

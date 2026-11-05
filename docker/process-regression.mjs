@@ -36,7 +36,7 @@ async function snapshot() {
     }
   }));
   const visible = rows.filter(Boolean);
-  return { processes: visible.length, zombies: visible.filter(p => p.state === 'Z'), servers: visible.filter(p => p.cmd.includes('node /app/docker/mcpvault-stdio.mjs')) };
+  return { processes: visible.length, zombies: visible.filter(p => p.state === 'Z'), servers: visible.filter(p => /^(?:\S*\/)?node \/app\/docker\/mcpvault-stdio\.mjs(?: |$)/.test(p.cmd)) };
 }
 
 async function clean(label) {
@@ -77,7 +77,7 @@ try {
   await health();
   if (process.argv.includes('--hold')) {
     await connect();
-    await writeFile('/tmp/lifecycle-ready', 'ready');
+    await writeFile('/vault/.lifecycle-ready', 'ready', { flag: 'wx', mode: 0o600 });
     await new Promise(() => {});
   }
   await clean('startup');
