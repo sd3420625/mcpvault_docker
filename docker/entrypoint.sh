@@ -6,6 +6,12 @@ PORT="${PORT:-8000}"
 MCP_PATH="${MCP_PATH:-/mcp}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-60000}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
+HEALTH_CHECK="${HEALTH_CHECK:-gateway}"
+
+case "$HEALTH_CHECK" in
+  gateway|server) ;;
+  *) echo 'HEALTH_CHECK must be gateway or server' >&2; exit 1 ;;
+esac
 
 case "$PORT" in
   ''|*[!0-9]*)
@@ -36,13 +42,13 @@ echo "Starting MCPVault gateway on port $PORT at $MCP_PATH"
 echo "Vault path: $VAULT_PATH"
 
 exec /app/node_modules/.bin/supergateway \
-  --stdio "node /app/docker/mcpvault-stdio.mjs" \
+  --stdio "exec node /app/docker/mcpvault-stdio.mjs" \
   --outputTransport streamableHttp \
   --stateful \
   --sessionTimeout "$SESSION_TIMEOUT" \
   --port "$PORT" \
   --streamableHttpPath "$MCP_PATH" \
   --healthEndpoint /healthz \
-  --healthCheck server \
+  --healthCheck "$HEALTH_CHECK" \
   --logLevel "$LOG_LEVEL" \
   "$@"

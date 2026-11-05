@@ -17,7 +17,7 @@ concurrency:
 
 env:
   IMAGE: sd3420625/mcpvault-gateway
-  RELEASE: 0.17.1-sg4.2.1
+  RELEASE: 0.17.1-sg4.2.1-r1
 
 jobs:
   upstream:
@@ -64,6 +64,8 @@ jobs:
           docker run --rm --entrypoint node mcpvault-ci:${{ matrix.arch }} -e "const p=require('./package-lock.json').packages; if(p['node_modules/@bitbonsai/mcpvault'].version!=='0.17.1'||p['node_modules/supergateway'].version!=='4.2.1')process.exit(1); console.log('MCPVault 0.17.1; Supergateway 4.2.1')"
       - name: Audit the whole runtime including Supergateway
         run: docker run --rm --entrypoint npm mcpvault-ci:${{ matrix.arch }} audit --omit=dev --audit-level=moderate
+      - name: Verify PID 1, health churn, session cleanup and shutdown
+        run: python3 docker/test-process-lifecycle.py mcpvault-ci:${{ matrix.arch }}
       - name: Test Streamable HTTP, vault operations, authentication and read-only mode
         run: |
           set -eu
@@ -71,7 +73,7 @@ jobs:
             mode="${config%:*}"
             uid="${config#*:}"
             name="mcpvault-ci-${mode}-${uid}"
-            docker run -d --name "$name" \
+            docker run -d --name "$name" --pids-limit 256 \
               --user "${uid}:100" --group-add 101 --group-add 1023 \
               --tmpfs "/vault:rw,uid=${uid},gid=100,mode=0700" \
               -e PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
@@ -79,8 +81,8 @@ jobs:
               -e SESSION_TIMEOUT=3000 \
               -e MCP_READ_ONLY="$mode" \
               -e SUPERGATEWAY_API_KEY=mcpvault-disposable-ci-key \
-              --entrypoint sh mcpvault-ci:${{ matrix.arch }} \
-              -c 'mkdir -p "$VAULT_PATH"; exec /usr/local/bin/mcpvault-entrypoint'
+              --entrypoint /usr/bin/tini mcpvault-ci:${{ matrix.arch }} \
+              -g -- sh -c 'mkdir -p "$VAULT_PATH"; exec /usr/local/bin/mcpvault-entrypoint'
             docker cp docker/smoke-http.mjs "$name:/app/smoke-http.mjs"
             docker exec "$name" node -e "const end=Date.now()+60000; (async()=>{while(Date.now()<end){try{if((await fetch('http://127.0.0.1:8000/healthz')).ok)return;}catch{} await new Promise(r=>setTimeout(r,500));} process.exit(1)})()"
             docker exec -e MCP_TEST_VAULT_IS_DISPOSABLE=yes "$name" node /app/smoke-http.mjs
@@ -141,6 +143,8 @@ jobs:
       - name: Preserve patched SDK batch-size security limits in the upstream regression
         run: git apply --check ../docker/supergateway-batch-limit.patch && git apply ../docker/supergateway-batch-limit.patch
         working-directory: gateway-source
+      - name: Apply the image's explicit crypto fallback and retain real HTTP mock exports
+        run: node docker/patch-supergateway.mjs gateway-source src
       - run: npm install
         working-directory: gateway-source
       - run: npm run build
