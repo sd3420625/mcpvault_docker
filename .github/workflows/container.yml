@@ -143,6 +143,8 @@ jobs:
       - name: Preserve patched SDK batch-size security limits in the upstream regression
         run: git apply --check ../docker/supergateway-batch-limit.patch && git apply ../docker/supergateway-batch-limit.patch
         working-directory: gateway-source
+      - name: Apply the image's explicit crypto fallback and retain real HTTP mock exports
+        run: node docker/patch-supergateway.mjs gateway-source src
       - run: npm install
         working-directory: gateway-source
       - run: npm run build
