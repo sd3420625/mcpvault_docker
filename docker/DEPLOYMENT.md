@@ -45,14 +45,7 @@ can contain API keys. Do not upload these files to GitHub or CI artifacts.
    protected archive of its actual bind-mounted Vault before replacing it.
    Do not copy an active Vault and describe the copy as a consistent snapshot.
 
-The diagnostic export recorded the following mapping; **fresh live inspect is
-authoritative**, since the user may have changed it after the export:
-
-| Container | Host port -> container port | Host bind -> container bind | User |
-| --- | --- | --- | --- |
-| mcpvault-work | 18001 -> 8000 | /volume1/import/note/工作笔记 -> /vault:rw | 1024:100 |
-| mcpvault-share | 18002 -> 8000 | /volume1/import/note/共享笔记 -> /vault:rw | 1024:100 |
-| mcpvault-personal | 18003 -> 8000 | /volume1/import/note/个人笔记 -> /vault:rw | 1024:100 |
+Determine each container's exact host ports, Vault bind source/destination and user from fresh live inspect. Preserve the mapping verbatim; do not substitute paths from examples or diagnostics.
 
 Preserve all live environment, user/group, supplementary groups, networks,
 restart/logging policy, secrets, mounts, ports, API key and Cloudflare settings.
