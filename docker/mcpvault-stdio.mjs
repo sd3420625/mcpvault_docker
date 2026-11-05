@@ -1,26 +1,20 @@
-import { spawn } from 'node:child_process';
-
 const readOnly = (process.env.MCP_READ_ONLY ?? 'false').toLowerCase();
 if (!['true', 'false', '1', '0'].includes(readOnly)) {
   console.error('MCP_READ_ONLY must be true, false, 1, or 0');
   process.exit(1);
 }
 
-const args = [
+// Run the official CLI in this process, rather than spawning a grandchild.
+// A session's process group then contains only this MCPVault process: when
+// Supergateway terminates the group, there is no intermediate Node wrapper
+// dying at the same time as the child it was supposed to wait for.
+process.argv = [
+  process.execPath,
   '/app/node_modules/@bitbonsai/mcpvault/dist/server.js',
   process.env.VAULT_PATH || '/vault',
 ];
-if (readOnly === 'true' || readOnly === '1') args.push('--read-only');
+if (readOnly === 'true' || readOnly === '1') process.argv.push('--read-only');
 
-// Pass paths as arguments; no vault path is interpolated into a shell command.
-const server = spawn(process.execPath, args, { stdio: 'inherit' });
-server.once('error', error => {
-  console.error(`Unable to start MCPVault: ${error.message}`);
-  process.exit(1);
-});
-for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, () => server.kill(signal));
-}
-server.once('exit', (code, signal) => {
-  process.exit(code ?? (signal === 'SIGTERM' || signal === 'SIGINT' ? 0 : 1));
-});
+// The vault path remains an argument, never shell-interpolated. Preserve the
+// official 0.17.1 entry point and its CLI/read-only semantics.
+await import('/app/node_modules/@bitbonsai/mcpvault/dist/server.js');
