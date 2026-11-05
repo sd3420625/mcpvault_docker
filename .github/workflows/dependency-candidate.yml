@@ -1,0 +1,34 @@
+name: Prepare runtime lockfile security update for review
+on:
+  pull_request:
+    paths: ['docker/**', '.github/workflows/dependency-candidate.yml']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Report advisory and prepare a candidate without publishing
+        working-directory: docker
+        run: |
+          cp runtime-package.json package.json
+          cp runtime-package-lock.json package-lock.json
+          npm ci --omit=dev
+          npm audit --omit=dev --json > runtime-audit.json || test "$?" = 1
+          npm audit fix --package-lock-only --omit=dev
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-lockfile-candidate
+          path: |
+            docker/runtime-audit.json
+            docker/runtime-package.json
+            docker/runtime-package-lock.json
+            docker/package-lock.json
+          retention-days: 1

@@ -62,10 +62,10 @@ jobs:
         run: |
           test "$(docker image inspect mcpvault-ci:${{ matrix.arch }} --format '{{.Config.User}}')" = node
           docker run --rm --entrypoint node mcpvault-ci:${{ matrix.arch }} -e "const p=require('./package-lock.json').packages; if(p['node_modules/@bitbonsai/mcpvault'].version!=='0.17.1'||p['node_modules/supergateway'].version!=='4.2.1')process.exit(1); console.log('MCPVault 0.17.1; Supergateway 4.2.1')"
-      - name: Verify PID 1, health churn, session cleanup and shutdown
-        run: python3 docker/test-process-lifecycle.py mcpvault-ci:${{ matrix.arch }}
       - name: Audit the whole runtime including Supergateway
         run: docker run --rm --entrypoint npm mcpvault-ci:${{ matrix.arch }} audit --omit=dev --audit-level=moderate
+      - name: Verify PID 1, health churn, session cleanup and shutdown
+        run: python3 docker/test-process-lifecycle.py mcpvault-ci:${{ matrix.arch }}
       - name: Test Streamable HTTP, vault operations, authentication and read-only mode
         run: |
           set -eu
