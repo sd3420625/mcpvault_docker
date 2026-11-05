@@ -42,8 +42,10 @@ RUN node -e 'const p=require("./package-lock.json").packages; for(const [name,wa
 COPY docker/entrypoint.sh /usr/local/bin/mcpvault-entrypoint
 COPY docker/mcpvault-stdio.mjs /app/docker/mcpvault-stdio.mjs
 COPY docker/healthcheck.mjs /app/docker/healthcheck.mjs
+COPY docker/native-crypto.mjs docker/patch-supergateway.mjs /app/docker/
 
-RUN chmod +x /usr/local/bin/mcpvault-entrypoint \
+RUN node /app/docker/patch-supergateway.mjs /app/node_modules/supergateway dist \
+    && chmod +x /usr/local/bin/mcpvault-entrypoint \
     && mkdir -p /vault \
     && chown -R node:node /app /vault
 

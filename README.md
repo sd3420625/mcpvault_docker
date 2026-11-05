@@ -22,6 +22,8 @@ Supergateway 4.2.1 原发布包锁定的部分 MCP SDK 和 Zod 版本存在已�
 
 ## 进程回收修复与验证
 
+运行依赖另固定 `@hono/node-server=2.1.3` 修补静态路径中间件绕过问题。Hono 2 不再隐式安装全局 crypto，因此镜像与上游测试源码均应用同一份显式原生 crypto 回退；已有 Node crypto 保持原样。全量 UTF-8 测试的 HTTP 模拟保留真实标准导出，所有原有字节边界断言继续执行。
+
 - 镜像内置 Tini 作为 PID 1，负责收养与回收孤儿后代；无需依赖群晖 UI 是否提供 `--init`。
 - `--stdio` 使用 `exec node`，启动器在同一个进程内加载固定的官方 MCPVault 0.17.1 CLI，保留中文、空格路径和只读参数，避免 shell/Node 包装进程与其子进程被同时终止后留下孤儿。
 - Supergateway 4.2.1 已通过 detached process group 发送 SIGTERM，并在 5 秒后升级 SIGKILL；这负责终止进程树，但不代替 Linux PID 1 对被收养后代执行 wait。此次保留其版本与安全依赖覆盖。
