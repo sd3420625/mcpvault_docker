@@ -8,17 +8,28 @@
 
 本仓库的 `src/`、`dist/` 保留为原 fork 的历史源码，根目录 npm 文件用于其开发验证；根目录锁文件已在原有版本范围内更新安全补丁。它们不参与容器构建，也不代表镜像中实际运行的 MCPVault 版本。容器用 `docker/runtime-package.json` 与 `docker/runtime-package-lock.json` 固定实际依赖，通过 `npm ci` 安装，镜像内 `/app/package-lock.json` 保留同一份记录。
 
-镜像地址为 `sd3420625/mcpvault-gateway:0.17.1-sg4.2.1`。发布流程先运行固定上游提交 `adda8609be73fd5b3adaa14430b43c40c5cbfb18` 的测试及构建，再分别验证 amd64、arm64 容器；两个平台通过后才在主分支上传已测试的同一份镜像，不在发布阶段重新构建。旧的 `0.11.2` 标签保持不变。
+本次修复候选镜像为 `sd3420625/mcpvault-gateway:0.17.1-sg4.2.1-r1`，以对应 GitHub Actions 的实际发布结果为准；旧的 `0.17.1-sg4.2.1` 与 `0.11.2` 标签不覆盖。发布流程先运行固定上游提交 `adda8609be73fd5b3adaa14430b43c40c5cbfb18` 的测试及构建，再分别验证 amd64、arm64 容器；两个平台通过后才在主分支上传已测试的同一份镜像，不在发布阶段重新构建。旧的 `0.11.2` 标签保持不变。
 
 容器验证覆盖：MCP 协商、工具发现、中文及空格路径、硬链接笔记读取、搜索、创建后立即读取、追加/前置、字面替换、Frontmatter 日期及引号、移动和本地回收站、隐藏目录和符号链接边界、API Key、并发客户端、会话过期和重连，以及 `MCP_READ_ONLY=true` 时的写入拒绝。所有写入测试均使用一次性的测试 Vault。
 
-`MCP_READ_ONLY` 默认 `false`；设置为 `true` 时同时将实际 Vault 挂载改为 `:ro`。`SESSION_TIMEOUT` 保持原默认值 `60000` 毫秒。`/healthz` 现在还会初始化并检查 MCPVault，Docker 健康检查超时相应增至 15 秒。
+`MCP_READ_ONLY` 默认 `false`；设置为 `true` 时同时将实际 Vault 挂载改为 `:ro`。`SESSION_TIMEOUT` 保持原默认值 `60000` 毫秒。`/healthz` 默认仅检查网关存活，不建立 MCP 会话或启动 MCPVault。`HEALTH_CHECK=server` 可显式启用 Supergateway 原有的初始化与 ping 深度检查（上游缓存 10 秒）；此模式也必须通过进程回收回归测试。Docker 健康检查采用 exec 形式，内部总超时 12 秒、Docker 外层超时 15 秒。存活检查成功不代表笔记读写一定可用，部署时另做 MCP 初始化、工具发现及只读验证。
 
 公网入口仍需有效鉴权，NAS 端口也应只允许可信来源。可通过 `SUPERGATEWAY_API_KEY` 或 `SUPERGATEWAY_API_KEY_FILE` 增加入站校验；它们与 Cloudflare Access 的配置分别管理。
 
 GitHub Actions 发布使用 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`；也兼容当前仓库已有的令牌名称 `SD3420625`，用户名默认 `sd3420625`。令牌只保存在仓库 Secrets，不应写入项目文件。
 
 Supergateway 4.2.1 原发布包锁定的部分 MCP SDK 和 Zod 版本存在已公布的高危问题。`docker/runtime-package.json` 将 SDK 1.x 固定到 1.32.0、SDK client/server 2.x 固定到 2.3.1、Node transport 固定到 2.1.0、Zod 固定到 4.6.6。发布前既审计整个运行依赖树，也用同一组修补依赖运行 Supergateway 完整官方测试；其中旧的“101 条批处理应成功”用例已明确适配为“100 条成功、101 条返回 HTTP 400 / -32600、拒绝后仍可用”，保留修补后的安全限制；不会通过降级网关或关闭审计来绕过告警。
+
+## 进程回收修复与验证
+
+- 镜像内置 Tini 作为 PID 1，负责收养与回收孤儿后代；无需依赖群晖 UI 是否提供 `--init`。
+- `--stdio` 使用 `exec node`，启动器在同一个进程内加载固定的官方 MCPVault 0.17.1 CLI，保留中文、空格路径和只读参数，避免 shell/Node 包装进程与其子进程被同时终止后留下孤儿。
+- Supergateway 4.2.1 已通过 detached process group 发送 SIGTERM，并在 5 秒后升级 SIGKILL；这负责终止进程树，但不代替 Linux PID 1 对被收养后代执行 wait。此次保留其版本与安全依赖覆盖。
+- 示例 Compose 设置 `pids_limit: 256`（Linux 同时计入线程）和 20 秒停止宽限期。PID 限制是宿主机保护措施，不是僵尸回收修复；必须在目标 NAS 验证 PIDs cgroup 实际生效。
+- CI 在 amd64、arm64 上分别检查：Tini PID 1、120 次健康轮询、跨健康缓存的深度检查、24 次显式会话终止、并发会话、断开超时、MCPVault 异常退出与重连、人工制造孤儿的回收，以及带活动会话的 SIGTERM/SIGINT 退出。仅使用一次性 tmpfs Vault。
+- 手动运行容器回归：`python3 docker/test-process-lifecycle.py <image>`。此命令不接受生产 Vault。
+
+部署与回滚见 [docker/DEPLOYMENT.md](docker/DEPLOYMENT.md)。测试门禁与发布步骤全部完成前，不能据此说明宣称镜像已发布或 NAS 已修复。
 
 # 项目说明
 由于原项目方案暂不支持docker镜像部署模式，计划开发一个打包镜像用于群晖nas直接使用。

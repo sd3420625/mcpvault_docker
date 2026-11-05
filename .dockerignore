@@ -3,5 +3,6 @@
 !docker/
 !docker/entrypoint.sh
 !docker/mcpvault-stdio.mjs
+!docker/healthcheck.mjs
 !docker/runtime-package.json
 !docker/runtime-package-lock.json

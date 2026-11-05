@@ -1,11 +1,15 @@
 services:
   mcpvault-gateway:
-    image: sd3420625/mcpvault-gateway:0.17.1-sg4.2.1
+    image: sd3420625/mcpvault-gateway:0.17.1-sg4.2.1-r1
     # For local builds instead of pulling the verified Docker Hub image:
     # build:
     #   context: .
     container_name: mcpvault-gateway
     restart: unless-stopped
+    # Linux counts threads as well as processes. Bound this container's impact
+    # on the NAS; this does not replace the built-in Tini process reaper.
+    pids_limit: 256
+    stop_grace_period: 20s
     ports:
       - "8000:8000"
     volumes:
@@ -17,6 +21,7 @@ services:
       SESSION_TIMEOUT: "60000"
       LOG_LEVEL: info
       MCP_READ_ONLY: "false"
+      HEALTH_CHECK: gateway
       # Optional inbound API key; set it through your deployment's secret mechanism.
       # SUPERGATEWAY_API_KEY: "..."
     # Uncomment and set these to the Synology user/group that owns the vault
